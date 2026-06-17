@@ -1,0 +1,19 @@
+# Secrets - NEVER commit these
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+*.egg-info/
+
+# Data files (stored in Google Drive)
+collected_cvs/
+submissions.csv
+submissions.xlsx
+*.csv
+*.log
+
+# macOS
+.DS_Store
+~$*
