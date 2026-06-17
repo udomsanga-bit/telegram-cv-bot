@@ -248,13 +248,28 @@ def log_submission(telegram_id, telegram_username, name, role, phone, filename, 
         w.writerow(row)
 
 # ── Available roles ───────────────────────────────────────────────────────────
-VALID_ROLES = {"FSO", "HISO"}
+# Map button display text → internal role code
+ROLE_MAP = {
+    "ផ្នែកលក់ស៊ីមកាត":          "FSO",
+    "ផ្នែកលក់អុិនធើណិតតាមផ្ទះ": "HISO",
+}
+ROLE_DISPLAY = {
+    "FSO":  "ផ្នែកលក់ស៊ីមកាត (FSO)",
+    "HISO": "ផ្នែកលក់អុិនធើណិតតាមផ្ទះ (HISO)",
+}
 
 # ── Keyboards ─────────────────────────────────────────────────────────────────
-def role_keyboard():
-    """Two role buttons shown at the start."""
+def start_keyboard():
+    """Landing button — shown on /start."""
     kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.row(KeyboardButton("FSO"), KeyboardButton("HISO"))
+    kb.add(KeyboardButton("ដាក់ពាក្យធ្វើការ"))
+    return kb
+
+def role_keyboard():
+    """Two role buttons with Khmer labels."""
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("ផ្នែកលក់ស៊ីមកាត"))
+    kb.add(KeyboardButton("ផ្នែកលក់អុិនធើណិតតាមផ្ទះ"))
     return kb
 
 def upload_keyboard():
@@ -266,7 +281,7 @@ def upload_keyboard():
 def remove_keyboard():
     return ReplyKeyboardRemove()
 
-# ── Step 1: /start → show Apply Now + role buttons ───────────────────────────
+# ── Step 1: /start → landing page with single Apply button ───────────────────
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -276,8 +291,36 @@ def cmd_start(message):
         message.chat.id,
         "👋 សូមស្វាគមន៍មកកាន់ Bot ដាក់ពាក្យការងារ!\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📋 *ដាក់ពាក្យឥឡូវ — Apply Now*\n\n"
-        "សូមជ្រើសរើសផ្នែកដែលអ្នកចង់ដាក់ពាក្យ៖",
+        "🏢 យើងកំពុងស្វែងរកបុគ្គលិកថ្មី!\n\n"
+        "ចុចប៊ូតុងខាងក្រោម ដើម្បីចាប់ផ្ដើមដាក់ពាក្យ៖",
+        reply_markup=start_keyboard(),
+    )
+    bot.register_next_step_handler(message, step_landing)
+
+# ── Step 1a: user taps "ដាក់ពាក្យធ្វើការ" → show role selection ──────────────
+def step_landing(message):
+    user_id = message.from_user.id
+
+    if message.text and message.text.startswith("/"):
+        bot.send_message(message.chat.id,
+            "⚠️ សូមចុចប៊ូតុង *ដាក់ពាក្យធ្វើការ* ខាងក្រោម ឬផ្ញើ /start ។",
+            parse_mode="Markdown",
+            reply_markup=start_keyboard())
+        bot.register_next_step_handler(message, step_landing)
+        return
+
+    if (message.text or "").strip() != "ដាក់ពាក្យធ្វើការ":
+        bot.send_message(message.chat.id,
+            "👇 សូមចុចប៊ូតុង *ដាក់ពាក្យធ្វើការ* ខាងក្រោម៖",
+            parse_mode="Markdown",
+            reply_markup=start_keyboard())
+        bot.register_next_step_handler(message, step_landing)
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "📋 *ជ្រើសរើសផ្នែកការងារ*\n\n"
+        "សូមចុចជ្រើសរើសផ្នែកដែលអ្នកចង់ដាក់ពាក្យ៖",
         parse_mode="Markdown",
         reply_markup=role_keyboard(),
     )
@@ -286,30 +329,30 @@ def cmd_start(message):
 # ── Step 1b: receive role button → ask for name ───────────────────────────────
 def step_select_role(message):
     user_id = message.from_user.id
-    choice = (message.text or "").strip().upper()
+    choice_text = (message.text or "").strip()
+    role = ROLE_MAP.get(choice_text)
 
     if message.text and message.text.startswith("/"):
         bot.send_message(message.chat.id,
-            "⚠️ សូមចុចប៊ូតុង FSO ឬ HISO ឬផ្ញើ /start ដើម្បីចាប់ផ្ដើមឡើងវិញ។",
+            "⚠️ សូមចុចជ្រើសរើសផ្នែក ឬផ្ញើ /start ដើម្បីចាប់ផ្ដើមឡើងវិញ។",
             reply_markup=role_keyboard())
         bot.register_next_step_handler(message, step_select_role)
         return
 
-    if choice not in VALID_ROLES:
+    if role is None:
         bot.send_message(
             message.chat.id,
-            "⚠️ សូមចុចប៊ូតុង *FSO* ឬ *HISO* ខាងក្រោម៖",
-            parse_mode="Markdown",
+            "⚠️ សូមចុចប៊ូតុងខាងក្រោម ដើម្បីជ្រើសរើសផ្នែក៖",
             reply_markup=role_keyboard(),
         )
         bot.register_next_step_handler(message, step_select_role)
         return
 
-    user_data[user_id]["role"] = choice
+    user_data[user_id]["role"] = role
 
     bot.send_message(
         message.chat.id,
-        f"✅ បានជ្រើសរើស *{choice}*!\n\n"
+        f"✅ បានជ្រើសរើស *{ROLE_DISPLAY[role]}*!\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "📝 *ជំហានទី 1/3 — ឈ្មោះពេញ*\n\n"
         "វាយបញ្ចូលឈ្មោះពេញរបស់អ្នក៖",
@@ -435,9 +478,10 @@ def step_get_cv(message):
 
     # Save file
     data = user_data.get(user_id, {})
-    name  = data.get("name", "unknown")
-    role  = data.get("role", "unknown")
-    phone = data.get("phone", "unknown")
+    name      = data.get("name", "unknown")
+    role      = data.get("role", "unknown")
+    role_disp = ROLE_DISPLAY.get(role, role)
+    phone     = data.get("phone", "unknown")
 
     timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_uname = (message.from_user.username or f"user{user_id}").replace(" ", "_")
@@ -491,7 +535,7 @@ def step_get_cv(message):
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "អរគុណចំពោះការដាក់ពាក្យ! នេះជាសង្ខេបនៃព័ត៌មានដែលយើងបានទទួល៖\n\n"
         f"👤 *ឈ្មោះ៖* {name}\n"
-        f"💼 *ផ្នែក៖* {role}\n"
+        f"💼 *ផ្នែក៖* {role_disp}\n"
         f"📞 *លេខទូរសព្ទ័៖* {phone}\n"
         f"📄 *CV៖* {original}\n\n"
         "ក្រុមការងាររបស់យើងនឹងពិនិត្យពាក្យសុំរបស់អ្នក ហើយនឹងទំនាក់ទំនងមកវិញឆាប់ៗ។\n\n"
