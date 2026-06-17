@@ -18,7 +18,8 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
@@ -35,11 +36,14 @@ if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not found in .env file!")
 
 # ── Google Drive config ───────────────────────────────────────────────────────
-# GOOGLE_SERVICE_ACCOUNT_JSON: the service account key JSON, base64-encoded
-# GOOGLE_DRIVE_FOLDER_ID: the ID of the shared Google Drive folder
-GDRIVE_CREDS_B64  = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-GDRIVE_FOLDER_ID  = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
-GDRIVE_ENABLED    = bool(GDRIVE_CREDS_B64 and GDRIVE_FOLDER_ID)
+# OAuth2 user credentials (upload as the Google account owner — avoids service
+# account quota errors on personal Drive)
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+GDRIVE_FOLDER_ID     = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+GDRIVE_ENABLED       = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and
+                            GOOGLE_REFRESH_TOKEN and GDRIVE_FOLDER_ID)
 
 # ── Local fallback dirs (used on Railway as temp space) ───────────────────────
 CV_DIR = Path(tempfile.gettempdir()) / "collected_cvs"
@@ -94,12 +98,16 @@ def clear_webhook():
 
 # ── Google Drive helpers ──────────────────────────────────────────────────────
 def _get_drive_service():
-    """Build and return an authenticated Google Drive service."""
-    creds_json = json.loads(base64.b64decode(GDRIVE_CREDS_B64))
-    creds = service_account.Credentials.from_service_account_info(
-        creds_json,
+    """Build and return an authenticated Google Drive service using OAuth2 user credentials."""
+    creds = Credentials(
+        token=None,
+        refresh_token=GOOGLE_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
         scopes=["https://www.googleapis.com/auth/drive"],
     )
+    creds.refresh(Request())
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 def _find_file_in_drive(service, filename: str) -> str | None:
